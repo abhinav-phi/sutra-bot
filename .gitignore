@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Secrets — NEVER commit
+.env
+
+# Generated / runtime artifacts
+expanded/
+data/
