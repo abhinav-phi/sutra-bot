@@ -47,7 +47,7 @@ bash sutra/scripts/run_simulator.sh                  # official judge_simulator.
 
 ## Model choice & tradeoffs
 
-- Primary composition on a frontier model (Claude Sonnet class); secondary on GPT-4o-mini-class via a *different provider* for outage resilience.
+- Primary composition on a fast OpenAI-compatible endpoint (Groq qwen3.8-27b with a one-shot gate-repair retry); secondary on a *different provider* (OpenRouter minimax-m3) for outage resilience.
 - Replies are regex-first classified and templated — sub-millisecond and fully deterministic (ADR-08).
 - Same-version context re-push is answered `409 stale_version` (matches `examples/api-call-examples.md` Example 1.5) while leaving state untouched (the briefs' "no-op").
 
