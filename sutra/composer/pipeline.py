@@ -25,6 +25,24 @@ POLICY_DEFAULT_CTA = {
     "none": E.CTA_NONE,
 }
 
+# Gate-repair hints: fed back to the LLM with the rejection reason so a fast
+# provider can fix its own output instead of dropping to the template tier.
+FIX_HINTS = {
+    "check1_url": "Remove every URL and domain-like string.",
+    "check2_ungrounded_number": "Use ONLY numbers copied verbatim from the FACTS list; delete every number that is not listed there.",
+    "check3_multiple_cta": "Keep exactly ONE ask in the whole body; remove the extra question or marker.",
+    "check4_buried_cta": "Move the single ask into the FINAL sentence; add nothing after it.",
+    "check5_cta_policy": "Make the body wording and the cta field match the CTA policy exactly (binary: 'Reply YES' ending; slot: literal 'Reply 1' AND 'Reply 2' with options; open: exactly one '?' in the last sentence).",
+    "check6_taboo": "Remove the taboo word and rephrase.",
+    "check7_no_domain_vocab": "Include at least one allowed vocabulary word VERBATIM (the trade's service noun counts).",
+    "check8_language": "Match the required language exactly (hi-en mix needs real Hindi inserts like aap/hai/kya).",
+    "check9_generic_greeting": "Open with the owner's first name within the first 48 characters.",
+    "check10_thin_facts": "Include at least 3 distinct grounded facts (numbers/percentages/dates) from FACTS.",
+    "check11_repeat": "Rewrite the body with different wording.",
+    "check12_plagiarism": "Rewrite the body in your own words.",
+    "check13_rationale_number": "Remove ungrounded numbers from the rationale.",
+}
+
 
 class Composer:
     def __init__(self, context_store, registries, llm_client, settings) -> None:
@@ -113,7 +131,10 @@ class Composer:
             return action, {"kind": canon,
                             "signal_id": cached.get("signal_id") or canon}
 
-        owner = spine.get("owner") or None
+        # check9 (owner-name greeting) applies to merchant-facing messages only;
+        # customer-facing sends greet the CUSTOMER — forcing the owner's name
+        # there made the LLM write merchant-style copy to lapsed customers.
+        owner = None if customer else (spine.get("owner") or None)
         profile = voice_profile(category)
         system = build_system_prompt(category, cfg, language)
         user = build_user_prompt(spine, spine.get("facts_lines", []), facts.fresh_tokens)
@@ -170,34 +191,45 @@ class Composer:
     async def _via_llm(self, system: str, user: str, body_ctx: dict) -> dict | None:
         if not self.settings.llm_enabled or self.llm.ledger.status() == "hard":
             return None
-        # single attempt per provider: reasoning models are slow (~10s/call) and
-        # a re-prompt would blow the tick budget, losing even the template
-        # fallback. First-pass quality + template fallback > double-attempt risk.
+        # One gate-repair retry per provider: sub-second providers afford a
+        # second call with the rejection reason appended, converting would-be
+        # template fallbacks into grounded LLM messages. Slow providers still
+        # land in the template tier inside the 12s compose cap.
+        fix_note = ""
         for provider in self.llm.providers:
-            try:
-                text = await self.llm.complete(system, user, max_tokens=600)
-            except Exception as e:                              # noqa: BLE001
-                log.warning("llm provider %s failed: %s", provider.name, type(e).__name__)
-                continue
-            data = parse_llm_json(text)
-            if not data or not data.get("body"):
-                log.warning("llm provider %s returned unparsable output", provider.name)
-                continue
-            body = str(data["body"]).strip()
-            cta = str(data.get("cta", "")).strip()
-            if cta not in E.VALID_CTAS:
-                cta = POLICY_DEFAULT_CTA[body_ctx["cfg"]["cta_policy"]]
-            rationale = str(data.get("rationale", "")).strip()[:400]
-            ok, reason = validate(body, cta, rationale, **dict(
-                facts=body_ctx["facts"], profile=body_ctx["profile"],
-                cfg=body_ctx["cfg"], language=body_ctx["language"],
-                owner_name=body_ctx["owner"],
-                conv_body_hashes=body_ctx["conv_hashes"]))
-            if ok:
-                return {"body": body, "cta": cta, "rationale": rationale, "_source": "llm"}
-            log.warning("llm output rejected (%s) — falling back to template", reason)
-            self.rejections[reason.split("[")[0]] = self.rejections.get(reason.split("[")[0], 0) + 1
-            break
+            exhausted = False
+            for attempt in range(2):
+                try:
+                    text = await self.llm.complete(system, user + fix_note, max_tokens=600)
+                except Exception as e:                          # noqa: BLE001
+                    log.warning("llm provider %s failed: %s", provider.name, type(e).__name__)
+                    break                                       # provider dead → next tier
+                data = parse_llm_json(text)
+                if not data or not data.get("body"):
+                    log.warning("llm provider %s returned unparsable output", provider.name)
+                    break
+                body = str(data["body"]).strip()
+                cta = str(data.get("cta", "")).strip()
+                if cta not in E.VALID_CTAS:
+                    cta = POLICY_DEFAULT_CTA[body_ctx["cfg"]["cta_policy"]]
+                rationale = str(data.get("rationale", "")).strip()[:400]
+                ok, reason = validate(body, cta, rationale, **dict(
+                    facts=body_ctx["facts"], profile=body_ctx["profile"],
+                    cfg=body_ctx["cfg"], language=body_ctx["language"],
+                    owner_name=body_ctx["owner"],
+                    conv_body_hashes=body_ctx["conv_hashes"]))
+                if ok:
+                    return {"body": body, "cta": cta, "rationale": rationale, "_source": "llm"}
+                code = reason.split("[")[0]
+                self.rejections[code] = self.rejections.get(code, 0) + 1
+                log.warning("llm output rejected (%s) — attempt %d", reason, attempt + 1)
+                fix_note = (f"\n\nFIX NOTE: your previous message was REJECTED by the validator "
+                            f"({reason}). {FIX_HINTS.get(code, 'Correct this failure and try again.')}"
+                            f" Return the corrected JSON only.")
+            else:
+                exhausted = True            # both attempts rejected → stop here
+            if exhausted:
+                break
         return None
 
     # -------------------------------------------------------------- output
