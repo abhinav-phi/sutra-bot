@@ -99,7 +99,7 @@ OUTPUT — STRICT JSON only, no markdown, no extra keys:
 - rationale: 1-2 sentences naming the trigger kind, the chosen signal anchor, and the expected merchant action. Quote no number that is not in FACTS.
 
 VALIDATOR MUST-RULES (an automated gate rejects the output if ANY fails):
-R1. GROUNDING (gate #2): every digit, percentage, price, date and count in body AND rationale must be copied character-for-character from the FACTS list — same digits, same format, no thousands commas the fact does not have, no rounding, no "~". Zero numbers outside FACTS. Fewer exact numbers beat many invented ones.
+R1. GROUNDING (gate #2): every digit, percentage, price, date and count in body AND rationale must be copied character-for-character from the FACTS list — same digits, same format, no thousands commas the fact does not have, no rounding, no "~". Zero numbers outside FACTS. Fewer exact numbers beat many invented ones. Render comparisons naturally — "up 6%", "down 50%" — NEVER raw payload formats like "+6" or "delivery_late".
 R2. ONE ASK ONLY (gate #3): exactly one ask in the whole body. No extra question marks, no second request before the final one.
    REJECTED: "Want me to draft it? Reply YES." (two asks: a question plus a marker)
    GOOD: "I have drafted it. Reply YES and I will send it now."
@@ -115,14 +115,14 @@ R4. CTA WORDING MATCHES POLICY (gate #5) — body wording AND cta field must agr
 R5. OWNER NAME IN THE FIRST 48 CHARACTERS (gate #9): open with "Hi <OwnerFirstName>," or "<OwnerFirstName>," — for dentists use the "Dr." honorific before the first name. Never "Hi there", never the shop name alone.
    REJECTED: "Hi there, quick update..." · "Your listing..."
    GOOD: "Hi Meera, your listing..." / "Dr. Meera, your recall numbers..."
-R6. FACT DENSITY ≥ 3 (gate #10, judge Specificity): weave at least THREE distinct grounded numbers (views / CTR / peer median / days / counts / prices) into the body, quoting them exactly ("2.1%", never "about 2%").
+R6. FACT DENSITY ≥ 3 (gate #10, judge Specificity): weave at least THREE distinct grounded numbers (views / CTR / peer median / days / counts / prices) into the body, quoting them exactly ("2.1%", never "about 2%"). When FACTS contains a date or time, quote it verbatim too ("by 2026-11-12", "Wed 5 Nov, 6pm") — dated messages score highest.
 R7. NO URLs or domain-like strings (gate #1): no http, www, .com, .in, .ai — anywhere.
 R8. NEVER use this vertical's taboo words (listed below).
-R9. MANDATORY VOCAB (machine-checked): the body MUST contain at least ONE word from the allowed vocabulary list VERBATIM (e.g. for a dentist: "recall" or "cleaning"; for a restaurant: "delivery" or "BOGO"). A body with zero vocabulary words is auto-rejected — weave one in naturally (the trade's own service noun counts).
+R9. MANDATORY VOCAB (machine-checked): the body MUST contain at least TWO words from the allowed vocabulary list VERBATIM (or one vocabulary word plus the trade's service noun — e.g. for a dentist "recall" + "cleaning"; for a restaurant "delivery" + "BOGO"). A body with zero or one vocabulary words reads generic and is rejected — weave them in naturally.
 R10. LANGUAGE (gate #8): follow the LANGUAGE line exactly; for "hi-en mix" the body must contain real Hindi inserts (aap/aapki/hai/kya/bhej).
 R11. NO INTERNAL JARGON in the body: never write trigger, spine, CTA, policy, context, prompt, fact, registry, lever, variant. State why-now naturally — "this week", "in 4 days", "since the new journal issue" — quoting its number from FACTS.
-R12. WHY NOW (trigger relevance): the first sentence states the timely reason (deadline, delta, event date) with its grounded number.
-R13. ENGAGEMENT (judge dimension): build the message around ONE psychological lever from the levers line, shown through numbers (loss aversion / social proof / curiosity), and end on the lowest-friction ask the policy allows."""
+R12. WHY NOW — DECISION QUALITY (judge dimension): the FIRST sentence must name THIS trigger's specific event and quote its exact number(s) from FACTS (days left, % change and on which metric, review count, batch IDs, milestone progress "145 of 150"). A message that could be sent any week to any merchant is a failed message. Never open with generic phrases like "local moment", "quick update", "hope you are well".
+R13. ENGAGEMENT (judge dimension): build the message around ONE psychological lever from the levers line, made CONCRETE — a number, a deadline, a competitor's price, or a customer's own words (e.g. a quoted complaint, a rival's Rs 199 offer, "5 to go"). Loss aversion must name what is lost and by when; social proof must name who and how many. End on the lowest-friction ask the policy allows."""
 
 
 def build_system_prompt(category: dict, cfg: dict, language: str) -> str:
@@ -158,14 +158,24 @@ def build_system_prompt(category: dict, cfg: dict, language: str) -> str:
 
 
 def build_user_prompt(spine: dict, facts_lines: list[str], fresh_tokens: list[str]) -> str:
-    name = spine.get("owner") or spine.get("customer_name") or ""
-    greeting = (f'GREETING: open with "{name}," (or "Hi {name},") — the name must land '
-                f"within the first 48 characters." if name else
-                "GREETING: no personal name available — never open with 'Hi there'; use the owner role.")
+    if spine.get("audience") == "customer":
+        cname = spine.get("customer_name") or ""
+        greeting = (f'GREETING + AUDIENCE: this message goes TO THE CUSTOMER'
+                    + (f' — open with "Hi {cname},"' if cname else ' — open with "Hello,"')
+                    + '. Write as the merchant speaking to THEIR customer about the customer\'s own '
+                      'visit/booking. NEVER mention the merchant\'s listing stats (views, CTR, peer '
+                      'medians) — the customer does not care about the merchant\'s metrics.')
+        signal_head = "CHOSEN SIGNAL — the customer's why-now (build the message around this):"
+    else:
+        name = spine.get("owner") or ""
+        greeting = (f'GREETING: open with "{name}," (or "Hi {name},") — the name must land '
+                    f"within the first 48 characters." if name else
+                    "GREETING: no personal name available — never open with 'Hi there'; use the owner role.")
+        signal_head = ("CHOSEN SIGNAL — the why-now spine (build the message around this; state it in the "
+                       "first sentence, quoting its numbers from FACTS):")
     parts = [
         greeting,
-        "CHOSEN SIGNAL — the why-now spine (build the message around this; state it in the "
-        "first sentence, quoting its numbers from FACTS):",
+        signal_head,
         spine.get("summary", "(none)"),
         "",
         "VERIFIABLE FACTS YOU MAY QUOTE (the ONLY numbers allowed anywhere in body and "

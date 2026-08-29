@@ -200,6 +200,7 @@ def build_spine(category: dict, merchant: dict, trigger: dict,
     spine = {
         "kind": kind,
         "owner": owner,
+        "audience": "customer" if customer else "owner",
         "shop": ident.get("name", ""),
         "locality": ident.get("locality", ""),
         "city": ident.get("city", ""),
@@ -257,48 +258,77 @@ def build_spine(category: dict, merchant: dict, trigger: dict,
         else:
             spine["summary"] = "weekly research digest release"
 
-    elif kind == "perf_dip":
-        line, val = _delta_line(perf)
-        spine["summary"] = f"performance dip: views/calls {line}".strip()
+    elif kind in ("perf_dip", "perf_spike"):
+        p = payload
+        metric = str(p.get("metric") or "").strip() or "traffic"
+        window = str(p.get("window") or "7d")
+        dpct = p.get("delta_pct")
+        line, val = _delta_line(perf)                     # merchant fallback
+        if isinstance(dpct, (int, float)):
+            val = dpct
+            line = f"{'up' if val >= 0 else 'down'} {_pct(abs(val))} over the last {window}"
+        spine["metric_name"] = metric.replace("_", " ")
         spine["delta_line"], spine["delta_val"] = line, val
         if isinstance(val, (int, float)):
             spine["extra_numbers"].append(abs(round(val * 100)))
             spine["delta_pct"] = _pct(abs(val))
-            fl.insert(0, f"7-day change: {line}")
-
-    elif kind == "perf_spike":
-        line, val = _delta_line(perf)
-        spine["summary"] = f"performance spike worth riding: {line}".strip()
-        spine["delta_line"], spine["delta_val"] = line, val
-        if isinstance(val, (int, float)):
-            spine["extra_numbers"].append(abs(round(val * 100)))
-            spine["delta_pct"] = _pct(abs(val))
-            fl.insert(0, f"7-day change: {line}")
+        head = f"{spine['metric_name']} {line}"
+        if isinstance(p.get("vs_baseline"), (int, float)):
+            spine["extra_numbers"].append(p["vs_baseline"])
+            head += f", baseline {p['vs_baseline']}"
+        fl.insert(0, head)
+        if kind == "perf_spike" and p.get("likely_driver"):
+            drv = _clean(p["likely_driver"]).replace("_", " ")
+            spine["driver"] = drv
+            fl.append(f"likely driver: {drv}")
+        if p.get("is_expected_seasonal"):
+            fl.append("note: expected seasonal pattern")
+        spine["summary"] = (f"performance spike worth riding: {head}" if kind == "perf_spike"
+                            else f"performance dip: {head}")
 
     elif kind == "milestone_reached":
-        val = payload.get("value")
-        metric = str(payload.get("metric", "milestone"))
-        spine["summary"] = f"milestone reached on {metric}" + (f" ({val})" if val else "")
-        if isinstance(val, (int, float)):
-            spine["extra_numbers"].append(val)
-            spine["metric_label"] = metric
-            fl.insert(0, f"milestone: {metric} at {val}")
+        metric = str(payload.get("metric") or "milestone").replace("_", " ")
+        vnow = payload.get("value_now", payload.get("value"))
+        mval = payload.get("milestone_value")
+        spine["metric_label"] = metric
+        if isinstance(vnow, (int, float)) and isinstance(mval, (int, float)):
+            spine["extra_numbers"] += [int(vnow), int(mval)]
+            fl.insert(0, f"milestone: {metric} at {int(vnow)} of {int(mval)} — {int(mval) - int(vnow)} to go")
+            spine["summary"] = f"milestone imminent: {int(vnow)}/{int(mval)} {metric}"
+        elif isinstance(vnow, (int, float)):
+            spine["extra_numbers"].append(vnow)
+            fl.insert(0, f"milestone: {metric} at {vnow}")
+            spine["summary"] = f"milestone reached on {metric} ({vnow})"
+        else:
+            spine["summary"] = f"milestone reached on {metric}"
 
     elif kind == "competitor_opened":
         dist = payload.get("distance_km")
+        cname = _clean(payload.get("competitor_name") or "")
+        their_offer = _clean(payload.get("their_offer") or "")
         spine["summary"] = "new nearby competitor opened"
+        if cname:
+            spine["competitor_name"] = cname
+        if their_offer:
+            spine["their_offer"] = their_offer
         if isinstance(dist, (int, float)):
             spine["extra_numbers"].append(dist)
             spine["distance_km"] = dist
-            fl.insert(0, f"new competitor: {dist:g} km away")
+            head = f"new competitor: {cname or 'unnamed'}, {dist:g} km away"
+            if their_offer:
+                head += f", advertising {their_offer}"
+            fl.insert(0, head)
         spine["competitor_note"] = _clean(payload.get("note", ""))[:80]
 
     elif kind in ("festival_upcoming",):
-        days = payload.get("days_to")
+        days = payload.get("days_until", payload.get("days_to"))
         spine["festival"] = str(payload.get("festival") or payload.get("name") or "the upcoming festival")
         spine["note"] = _clean(payload.get("note", ""))[:90]
         if spine["note"]:
             fl.append(f"festival note: {spine['note']}")
+        fdate = _clean(payload.get("date") or "")
+        if fdate:
+            fl.append(f"festival date: {fdate}")
         if isinstance(days, (int, float)):
             spine["extra_numbers"].append(days)
             spine["days_to"] = int(days)
@@ -306,17 +336,46 @@ def build_spine(category: dict, merchant: dict, trigger: dict,
         spine["summary"] = f"festival window opening: {spine['festival']}"
 
     elif kind in ("weather_heatwave", "local_news_event"):
-        spine["hook"] = _clean(payload.get("headline") or payload.get("note")
-                               or payload.get("forecast") or "today's local moment")[:110]
-        fl.insert(0, f"local moment: {spine['hook']}")
-        spine["summary"] = f"timely local hook: {spine['hook']}"
+        p = payload
+        if p.get("match"):
+            hook = _clean(p["match"])
+            if p.get("venue"):
+                hook += f" at {_clean(p['venue'])}"
+            if p.get("city"):
+                hook += f", {_clean(p['city'])}"
+            mt = str(p.get("match_time_iso") or "")
+            if len(mt) > 15:
+                hook += f" ({mt[11:16]} IST)"
+            spine["match"] = _clean(p["match"])
+        else:
+            hook = _clean(p.get("headline") or p.get("note")
+                          or p.get("forecast") or "today's local moment")[:110]
+        spine["hook"] = hook
+        fl.insert(0, f"local moment: {hook}")
+        spine["summary"] = f"timely local hook: {hook}"
 
     elif kind == "regulation_change":
         item = _digest_item(category, fresh_tokens)
         spine["digest"] = item
         if item.get("title"):
             fl.insert(0, f"regulation: \"{item.get('title')}\" ({item.get('source', '')})")
-        spine["summary"] = f"compliance update: {item.get('title', 'regulatory change')}"
+        mol = _clean(payload.get("molecule") or "")
+        batches = [_clean(b) for b in (payload.get("affected_batches") or [])][:2]
+        mfr = _clean(payload.get("manufacturer") or "")
+        if mol:
+            spine["molecule"] = mol
+            bit = f"supply alert: {mol}"
+            if batches:
+                bit += f", batches {', '.join(batches)}"
+            if mfr:
+                bit += f" ({mfr})"
+            fl.insert(0, bit)
+        deadline = _clean(payload.get("deadline_iso") or "")[:10]
+        if deadline:
+            fl.append(f"compliance deadline: {deadline}")
+        spine["summary"] = (f"compliance update: {item.get('title')}"
+                            if item.get("title") else
+                            f"compliance update: {mol or 'regulatory change'} recall")
 
     elif kind == "category_trend_movement":
         sigs = category.get("trend_signals") or []
@@ -332,51 +391,109 @@ def build_spine(category: dict, merchant: dict, trigger: dict,
 
     elif kind == "review_theme_emerged":
         theme = _clean(payload.get("theme") or "a recurring review theme").replace("_", " ")
-        cnt = payload.get("count")
+        cnt = payload.get("occurrences_30d", payload.get("count"))
+        trend = _clean(payload.get("trend") or "").replace("_", " ")
+        quote = _clean(payload.get("common_quote") or "")
         spine["theme"] = theme
         if isinstance(cnt, (int, float)):
-            spine["extra_numbers"].append(cnt)
+            spine["extra_numbers"].append(int(cnt))
             spine["theme_count"] = int(cnt)
-            fl.insert(0, f"reviews: {int(cnt)} recent reviews mention \"{theme}\"")
+            head = f"reviews: {int(cnt)} in the last 30 days mention \"{theme}\""
+            if trend:
+                head += f" ({trend})"
+            fl.insert(0, head)
+        if quote:
+            spine["common_quote"] = quote
+            fl.append(f"customer quote: \"{quote}\"")
         spine["summary"] = f"review pattern emerged: {theme}"
 
     elif kind == "scheduled_recurring":
         spine["summary"] = "weekly curiosity ask — invite the merchant's own knowledge"
 
     elif kind == "dormant_with_vera":
-        days = payload.get("days_dormant")
+        days = payload.get("days_since_last_merchant_message", payload.get("days_dormant"))
+        last_topic = _clean(payload.get("last_topic") or "").replace("_", " ")
         if isinstance(days, (int, float)):
             spine["extra_numbers"].append(days)
             spine["days_dormant"] = int(days)
             fl.insert(0, f"days since last message: {int(days)}")
+        if last_topic:
+            fl.append(f"last topic: {last_topic}")
         spine["summary"] = "reactivate a merchant gone quiet on Vera"
 
     elif kind == "renewal_due":
         sub = merchant.get("subscription") or {}
-        dr = sub.get("days_remaining")
-        spine["plan"] = str(sub.get("plan", ""))
+        dr = payload.get("days_remaining", sub.get("days_remaining"))
+        spine["plan"] = str(payload.get("plan") or sub.get("plan") or "")
         if isinstance(dr, (int, float)):
             spine["extra_numbers"].append(dr)
             spine["days_remaining"] = int(dr)
             fl.insert(0, f"plan: {spine['plan']}, {int(dr)} days remaining")
+        amount = payload.get("renewal_amount")
+        if isinstance(amount, (int, float)):
+            spine["extra_numbers"].append(amount)
+            spine["renewal_amount"] = int(amount)
+            fl.append(f"renewal amount: Rs {int(amount)}")
         spine["summary"] = "subscription renewal approaching"
 
     elif kind == "customer_lapsed_soft":
+        orig = trigger.get("kind", "")
         rel = (customer or {}).get("relationship") or {}
         months = _months_between(rel.get("last_visit"), now)
         svc = voice_profile(category)["service"]
         spine["service"] = svc
         spine["slot_word"] = _slot_word(customer)
-        if months is not None:
+        if isinstance(payload.get("days_since_last_visit"), (int, float)):
+            spine["extra_numbers"].append(int(payload["days_since_last_visit"]))
+            fl.insert(0, f"{int(payload['days_since_last_visit'])} days since last visit")
+        elif months is not None:
             spine["extra_numbers"].append(months)
             spine["months_since"] = months
             fl.insert(0, f"{months} months since last {svc}")
+        if orig == "recall_due":
+            svc_due = _clean(payload.get("service_due") or "").replace("_", " ")
+            due_date = _clean(payload.get("due_date") or "")
+            labels = [_clean(s.get("label")) for s in (payload.get("available_slots") or [])
+                      if isinstance(s, dict) and s.get("label")][:2]
+            if svc_due:
+                fl.insert(0, f"service due: {svc_due}")
+            if due_date:
+                fl.insert(0, f"recall due by {due_date}")
+            if labels:
+                spine["slot_labels"] = labels
+                fl.append(f"open slots: {' / '.join(labels)}")
+        elif orig == "chronic_refill_due":
+            mols = [_clean(m) for m in (payload.get("molecule_list") or [])][:3]
+            stock_out = _clean(payload.get("stock_runs_out_iso") or "")[:10]
+            if mols:
+                spine["molecules"] = mols
+                fl.insert(0, f"refills due: {', '.join(mols)}")
+            if stock_out:
+                fl.insert(0, f"stock runs out {stock_out}")
+        elif orig == "trial_followup":
+            tdate = _clean(payload.get("trial_date") or "")[:10]
+            labels = [_clean(s.get("label")) for s in (payload.get("next_session_options") or [])
+                      if isinstance(s, dict) and s.get("label")][:2]
+            if tdate:
+                fl.insert(0, f"trial started {tdate}")
+            if labels:
+                spine["slot_labels"] = labels
+                fl.append(f"next sessions: {' / '.join(labels)}")
+        elif orig == "customer_lapsed_hard":
+            pf = _clean(payload.get("previous_focus") or "").replace("_", " ")
+            pmm = payload.get("previous_membership_months")
+            if pf:
+                fl.append(f"previous focus: {pf}")
+            if isinstance(pmm, (int, float)):
+                spine["extra_numbers"].append(int(pmm))
         agg = computed_numbers(merchant)                    # FR-18: Case-9 pattern
         if agg:
             spine["aggregate_line"], _tag = agg[0]
             spine["facts_lines"].append(spine["aggregate_line"])
-        spine["summary"] = (f"{spine['customer_name']}'s recall window is open "
-                            f"({months or '?'} months since last {svc})")
+        cname_txt = spine["customer_name"] or "the customer"
+        spine["summary"] = (f"{cname_txt}'s recall window is open "
+                            f"({spine.get('months_since', payload.get('days_since_last_visit')) or '?'} "
+                            f"since last {svc})")
 
     elif kind == "appointment_tomorrow":
         when = _clean(payload.get("appointment_at") or "tomorrow")
@@ -516,11 +633,15 @@ def build_template(spine: dict, category: dict, cfg: dict, language: str) -> dic
 
     elif v == "competitor_alert":
         dist = spine.get("distance_km")
-        near = (_f(f"a new competitor opened {dist:g} km away",
-                   f"ek naya competitor {dist:g} km door khul gaya hai", language)
+        cname = spine.get("competitor_name") or "a new competitor"
+        their_offer = spine.get("their_offer") or ""
+        near = (_f(f"{cname} just opened {dist:g} km away",
+                   f"{cname} {dist:g} km door khul gaya hai", language)
                 if dist is not None else
-                _f("a new competitor just opened nearby",
-                   "ek naya competitor paas mein khul gaya hai", language))
+                _f(f"{cname} just opened nearby",
+                   f"{cname} paas mein khul gaya hai", language))
+        if their_offer:
+            near += _f(f" — advertising {their_offer}", f" — {their_offer} offer ke saath", language)
         lever_line = _f("every click you lose books with whoever ranks first",
                         "har chhoota click top-ranking competitor ke paas jaata hai", language)
         ready = _f("I have the same-day profile refresh drafted.",
@@ -548,24 +669,33 @@ def build_template(spine: dict, category: dict, cfg: dict, language: str) -> dic
 
     elif v == "news_hook":
         vocab0 = vp["vocab"][0] if vp["vocab"] else "your services"
-        lead = _f(f"{spine.get('hook', '')} — there is a same-week angle here for {vocab0} demand",
-                  f"{spine.get('hook', '')} — is hafte {vocab0} demand ke liye ek angle hai", language)
-        ask = _f("Want the play sketched for this week?", "Is hafte ka play sketch kar dun?", language)
+        hook = spine.get("hook", "")
+        if spine.get("match"):
+            lead = _f(f"{hook} — match-night crowds order in; there is a same-evening angle for {vocab0} delivery demand",
+                      f"{hook} — match night pe delivery demand spike karti hai; aaj hi {vocab0} ka angle hai",
+                      language)
+            ask = _f("Want the match-night play sketched for tonight?",
+                     "Aaj raat ka match-night play sketch kar dun?", language)
+        else:
+            lead = _f(f"{hook} — there is a same-week angle here for {vocab0} demand",
+                      f"{hook} — is hafte {vocab0} demand ke liye ek angle hai", language)
+            ask = _f("Want the play sketched for this week?", "Is hafte ka play sketch kar dun?", language)
         body = " ".join((f"{greet} {lead}{stats_bit}.", ask))
         lever = "curiosity"
 
     elif v == "perf_delta_loss":
         val = spine.get("delta_val")
         pct = spine.get("delta_pct", "")
+        metric = spine.get("metric_name") or "traffic"
         if val is not None and val < 0:
-            lead = _f(f"traffic is {spine.get('delta_line', 'shifting')}",
-                      f"traffic down {pct} hai week-over-week", language)
+            lead = _f(f"your {metric} are {spine.get('delta_line', 'shifting')}",
+                      f"{metric} down {pct} hai week-over-week", language)
             lever_line = _f("the demand arrived, the listing leaked it",
                             "demand aa gayi hai, listing leak kar rahi hai", language)
             ready = _f("I have the diagnosis and fix drafted.", "Diagnosis aur fix draft ready hai.", language)
         else:
-            lead = _f(f"traffic is {spine.get('delta_line', 'moving')}",
-                      f"traffic up {pct} hai week-over-week", language)
+            lead = _f(f"your {metric} are {spine.get('delta_line', 'moving')}",
+                      f"{metric} up {pct} hai week-over-week", language)
             lever_line = _f("there is headroom to capture more while it is hot",
                             "garam mauke mein aur capture karne ka space hai", language)
             ready = _f("I have the capture draft ready.", "Capture draft ready hai.", language)
@@ -656,6 +786,11 @@ def build_template(spine: dict, category: dict, cfg: dict, language: str) -> dic
                    f", aur aapka “{offer}” rate abhi lagu hai" if offer and _is_hi(language) else "")
         slot_line = _f(f"We kept {slotw} open — two slots held",
                        f"Humne {slotw} aapke liye rakhe hain — do slots hold hain", language)
+        labels = spine.get("slot_labels") or []
+        if labels:
+            slot_cta = (f"Reply 1 for {labels[0]}" + (f", Reply 2 for {labels[1]}." if len(labels) > 1 else "."))
+        else:
+            slot_cta = _cta(language, "slot")
         lever_line = _f("each missed recall cycle usually costs a full appointment slot",
                         "har miss hua recall aam taur par ek poora appointment slot kharch karta hai",
                         language)
@@ -663,7 +798,7 @@ def build_template(spine: dict, category: dict, cfg: dict, language: str) -> dic
                    if spine.get("aggregate_line") else "")
         body = " ".join(x for x in (f"{head}. {since}{offer_c}.", lever_line + ".",
                                     slot_line + ".", agg_bit,
-                                    _cta(language, "slot")) if x)
+                                    slot_cta) if x)
 
     elif v == "appt_confirm":
         name = spine.get("customer_name") or ""
