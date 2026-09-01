@@ -1,0 +1,2 @@
+# Root shim so Nixpacks/Railway installs the bot's deps (bot lives in sutra/).
+-r sutra/requirements.txt

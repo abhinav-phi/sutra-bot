@@ -15,3 +15,11 @@ data/
 SESSION-SUMMARY.md
 magicpin_sutra_combined.txt
 *.log
+
+# Local bench artifacts (keep harness + result JSONs, ignore raw outputs)
+.apitest/*
+!.apitest/run_bench.py
+!.apitest/rerun_code.py
+!.apitest/results.json
+!.apitest/rerun_results.json
+api_bench_results/

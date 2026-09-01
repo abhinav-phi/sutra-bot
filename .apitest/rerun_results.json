@@ -1,0 +1,38 @@
+{
+  "deepseek-v4-flash_code": {
+    "score": 15,
+    "note": "passes tests, no sort",
+    "time": 4.29,
+    "ok": true
+  },
+  "deepseek-v4-flash-vision-exp_code": {
+    "score": 0,
+    "note": "no function found",
+    "time": 18.64,
+    "ok": true
+  },
+  "hy3_code": {
+    "score": 0,
+    "note": "no function found",
+    "time": 16.46,
+    "ok": true
+  },
+  "mimo-v2.5_code": {
+    "score": 15,
+    "note": "passes tests, no sort",
+    "time": 33.21,
+    "ok": true
+  },
+  "glm-5.3-flash_code": {
+    "score": 0,
+    "note": "no function found",
+    "time": 38.78,
+    "ok": true
+  },
+  "hy3_hindi": {
+    "score": 10,
+    "note": "good (25 words)",
+    "time": 10.2,
+    "ok": true
+  }
+}

@@ -51,6 +51,8 @@ bash sutra/scripts/run_simulator.sh                  # official judge_simulator.
 - Replies are regex-first classified and templated — sub-millisecond and fully deterministic (ADR-08).
 - Same-version context re-push is answered `409 stale_version` (matches `examples/api-call-examples.md` Example 1.5) while leaving state untouched (the briefs' "no-op").
 
+**Measured model bake-off (2026-09-01, full report [`../docs/9. ModelBench.md`](../docs/9.%20ModelBench.md)):** of the six models on the api.b.ai endpoint, `deepseek-v4-flash` scored **97/100** (JSON-perfect, execution-verified code, 2.91s avg) and is the composer candidate; `qwen3.8-flash` (94/100) is the secondary. Two provider facts are baked into the client: a **~9–10 req/min per-key rate limit** (sequential pacing + 429 backoff) and **reasoning-token burn** (all six are reasoning models — `max_tokens ≥ 2000` or `content` comes back empty, which the pipeline treats as a model failure and falls to the next tier).
+
 ## Tests (release gate)
 
 ```bash

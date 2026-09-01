@@ -1,0 +1,302 @@
+[
+  {
+    "model": "deepseek-v4-flash",
+    "tests": {
+      "exact": {
+        "score": 15,
+        "note": "perfect",
+        "time": 1.74,
+        "ok": true,
+        "finish": "stop"
+      },
+      "math": {
+        "score": 20,
+        "note": "correct (440)",
+        "time": 2.27,
+        "ok": true,
+        "finish": "stop"
+      },
+      "json": {
+        "score": 25,
+        "note": "valid + all keys",
+        "time": 2.45,
+        "ok": true,
+        "finish": "stop"
+      },
+      "code": {
+        "score": 15,
+        "note": "passes tests, no sort (2000 tokens)",
+        "time": 5.47,
+        "ok": true,
+        "finish": "length"
+      },
+      "hindi": {
+        "score": 10,
+        "note": "good (19 words)",
+        "time": 2.61,
+        "ok": true,
+        "finish": "stop"
+      }
+    },
+    "times": {
+      "exact": 1.7404779999997118,
+      "math": 2.2668356000031054,
+      "json": 2.45043529999748,
+      "code": 5.469912399999885,
+      "hindi": 2.6148212000007334
+    },
+    "avg_time": 2.91,
+    "latency_score": 12,
+    "total": 97
+  },
+  {
+    "model": "qwen3.8-flash",
+    "tests": {
+      "exact": {
+        "score": 15,
+        "note": "perfect",
+        "time": 1.61,
+        "ok": true,
+        "finish": "stop"
+      },
+      "math": {
+        "score": 20,
+        "note": "correct (440)",
+        "time": 12.16,
+        "ok": true,
+        "finish": "stop"
+      },
+      "json": {
+        "score": 25,
+        "note": "valid + all keys",
+        "time": 2.66,
+        "ok": true,
+        "finish": "stop"
+      },
+      "code": {
+        "score": 15,
+        "note": "passes tests, no sort",
+        "time": 4.64,
+        "ok": true,
+        "finish": "stop"
+      },
+      "hindi": {
+        "score": 10,
+        "note": "good (19 words)",
+        "time": 7.51,
+        "ok": true,
+        "finish": "stop"
+      }
+    },
+    "times": {
+      "exact": 1.6128406999996514,
+      "math": 12.164001000001008,
+      "json": 2.660913100000471,
+      "code": 4.644094400002359,
+      "hindi": 7.508913400000893
+    },
+    "avg_time": 5.72,
+    "latency_score": 9,
+    "total": 94
+  },
+  {
+    "model": "mimo-v2.5",
+    "tests": {
+      "exact": {
+        "score": 15,
+        "note": "perfect",
+        "time": 7.24,
+        "ok": true,
+        "finish": "stop"
+      },
+      "math": {
+        "score": 20,
+        "note": "correct (440)",
+        "time": 10.83,
+        "ok": true,
+        "finish": "stop"
+      },
+      "json": {
+        "score": 25,
+        "note": "valid + all keys",
+        "time": 13.39,
+        "ok": true,
+        "finish": "stop"
+      },
+      "code": {
+        "score": 15,
+        "note": "passes tests, no sort (2000 tokens)",
+        "time": 11.82,
+        "ok": true,
+        "finish": "length"
+      },
+      "hindi": {
+        "score": 10,
+        "note": "good (25 words)",
+        "time": 7.49,
+        "ok": true,
+        "finish": "stop"
+      }
+    },
+    "times": {
+      "exact": 7.23519110000052,
+      "math": 10.8299365999992,
+      "json": 13.387440700000298,
+      "code": 11.82384330000059,
+      "hindi": 7.490070200001355
+    },
+    "avg_time": 10.15,
+    "latency_score": 6,
+    "total": 91
+  },
+  {
+    "model": "deepseek-v4-flash-vision-exp",
+    "tests": {
+      "exact": {
+        "score": 15,
+        "note": "perfect",
+        "time": 2.19,
+        "ok": true,
+        "finish": "stop"
+      },
+      "math": {
+        "score": 20,
+        "note": "correct (440)",
+        "time": 1.32,
+        "ok": true,
+        "finish": "stop"
+      },
+      "json": {
+        "score": 25,
+        "note": "valid + all keys",
+        "time": 2.03,
+        "ok": true,
+        "finish": "stop"
+      },
+      "code": {
+        "score": 0,
+        "note": "no function found (2000 tokens)",
+        "time": 5.77,
+        "ok": true,
+        "finish": "length"
+      },
+      "hindi": {
+        "score": 10,
+        "note": "good (23 words)",
+        "time": 3.63,
+        "ok": true,
+        "finish": "stop"
+      }
+    },
+    "times": {
+      "exact": 2.185661399998935,
+      "math": 1.3241267000012158,
+      "json": 2.0339184000004025,
+      "code": 5.765508700002101,
+      "hindi": 3.634126799999649
+    },
+    "avg_time": 2.99,
+    "latency_score": 12,
+    "total": 82
+  },
+  {
+    "model": "hy3",
+    "tests": {
+      "exact": {
+        "score": 15,
+        "note": "perfect",
+        "time": 1.6,
+        "ok": true,
+        "finish": "stop"
+      },
+      "math": {
+        "score": 20,
+        "note": "correct (440)",
+        "time": 2.32,
+        "ok": true,
+        "finish": "stop"
+      },
+      "json": {
+        "score": 25,
+        "note": "valid + all keys",
+        "time": 4.74,
+        "ok": true,
+        "finish": "stop"
+      },
+      "code": {
+        "score": 0,
+        "note": "no function found (2000 tokens)",
+        "time": 5.25,
+        "ok": true,
+        "finish": "length"
+      },
+      "hindi": {
+        "score": 10,
+        "note": "good (25 words) (2000 tokens)",
+        "time": 4.41,
+        "ok": true,
+        "finish": "length"
+      }
+    },
+    "times": {
+      "exact": 1.5969791000024998,
+      "math": 2.3182514000000083,
+      "json": 4.7390930999972625,
+      "code": 5.251228200002515,
+      "hindi": 4.414166700000351
+    },
+    "avg_time": 3.66,
+    "latency_score": 12,
+    "total": 82
+  },
+  {
+    "model": "glm-5.3-flash",
+    "tests": {
+      "exact": {
+        "score": 15,
+        "note": "perfect",
+        "time": 3.87,
+        "ok": true,
+        "finish": "stop"
+      },
+      "math": {
+        "score": 20,
+        "note": "correct (440)",
+        "time": 2.17,
+        "ok": true,
+        "finish": "stop"
+      },
+      "json": {
+        "score": 25,
+        "note": "valid + all keys",
+        "time": 3.85,
+        "ok": true,
+        "finish": "stop"
+      },
+      "code": {
+        "score": 0,
+        "note": "no function found (2000 tokens)",
+        "time": 10.94,
+        "ok": true,
+        "finish": "length"
+      },
+      "hindi": {
+        "score": 10,
+        "note": "good (28 words)",
+        "time": 6.85,
+        "ok": true,
+        "finish": "stop"
+      }
+    },
+    "times": {
+      "exact": 3.870634400002018,
+      "math": 2.1659366999992926,
+      "json": 3.8549219999986235,
+      "code": 10.938284899999417,
+      "hindi": 6.850398700000369
+    },
+    "avg_time": 5.54,
+    "latency_score": 9,
+    "total": 79
+  }
+]

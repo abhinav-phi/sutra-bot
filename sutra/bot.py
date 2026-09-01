@@ -108,10 +108,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/metadata")
     async def metadata():
         s = st.settings
+        if s.llm_enabled:
+            if s.custom_llm_api_key and s.custom_llm_base_url:
+                host = s.custom_llm_base_url.split("//")[-1].split("/")[0]
+                primary = f"{host} {s.custom_llm_model}"
+            else:
+                primary = f"Anthropic {s.primary_model}"
+            model = (f"{primary} (primary) → OpenRouter {s.openrouter_model} "
+                     f"(fallback) → deterministic templates")
+        else:
+            model = "deterministic templates (LLM disabled)"
         return {"team_name": s.team_name, "team_members": s.team_members,
-                "model": (f"Groq {s.primary_model} (primary) → OpenRouter "
-                          f"{s.secondary_model} (fallback) → deterministic templates"
-                          if s.llm_enabled else "deterministic templates (LLM disabled)"),
+                "model": model,
                 "approach": ("Hybrid deterministic-guardrail composer: routed LLM core + "
                              "facts-registry validation gate + three-tier fallback + "
                              "reply state machine"),

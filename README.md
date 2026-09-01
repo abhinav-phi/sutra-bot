@@ -9,7 +9,7 @@
 | Path | What lives here |
 |---|---|
 | [`sutra/`](sutra/) | 💻 The bot — FastAPI source, tests, scripts ([code README](sutra/README.md)) |
-| [`docs/`](docs/) | 📘 Formal documentation suite — PRD · TechSpec · AppFlow · Design · Schema · ImplementationPlan · Tracker · Rules |
+| [`docs/`](docs/) | 📘 Formal documentation suite — PRD · TechSpec · AppFlow · Design · Schema · ImplementationPlan · Tracker · Rules · ModelBench |
 | [`challenge-pack/`](challenge-pack/) | 📥 Official organizer-provided material (briefs, dataset, judge simulator, examples) |
 | [`notes/`](notes/) | 🧠 Our working notes — full challenge guidelines, planning prompt, docs-generation prompt |
 
@@ -52,18 +52,35 @@ Full rationale: [`docs/2. TechSpec.md`](docs/2.%20TechSpec.md) (ADRs) and [`docs
 |---|---|
 | Baseline (initial prompts, b.ai deepseek) | 23/50 (46%) |
 | Gate-aware prompts + grounded templates | 31/50 (62%) |
-| **Final: payload-coverage + gate-repair retry + audience-aware composer (Groq qwen3.8-27b)** | **36/50 (72%) — GOOD** |
+| **Best judge run: payload-coverage + gate-repair retry + audience-aware composer (Groq qwen3.8-27b)** | **36/50 (72%) — GOOD** |
 
-Run-to-run variance on the free judge pool is ±2 points; the final three full runs scored 34-36/50 with 13-15/15 messages composed and zero timeouts. Best single message: 44/50.
+Run-to-run variance on the free judge pool is ±2 points; the final three full runs scored 34-36/50 with 13-15/15 messages composed and zero timeouts. Best single message: 44/50. The 36/50 milestone was measured on the Groq composer; the frozen composer below was selected on measured capability scores (judge-rubric A/B re-runs were rate-limited-noisy and inconclusive).
 
-## Composer stack
+## Model evaluation (measured, 2026-09-01)
 
-Groq `qwen3.8-27b` (primary, ~0.8s/call, gate-repair retry on rejection) → OpenRouter `minimax-m3:free` (fallback) → deterministic grounded templates (always emits). Every number the LLM prints is validated against a facts registry built from the pushed context; rejected drafts are repaired with the rejection reason fed back to the model.
+We ran a capability bake-off of the six models on the `api.b.ai` endpoint (5 tasks: exact instruction, math, strict JSON, execution-verified code, Hindi WhatsApp copy — plus latency; composite /100). Full methodology, raw outputs and per-task detail: [`docs/9. ModelBench.md`](docs/9.%20ModelBench.md).
+
+| Rank | Model | Score | Avg latency | One-line verdict |
+|---|---|---|---|---|
+| 1 | `deepseek-v4-flash` | **97/100** | 2.91s | Best composer candidate — JSON-perfect, code runs, fast |
+| 2 | `qwen3.8-flash` | 94/100 | 5.72s | Most token-efficient thinker (finished code within 400 tok) |
+| 3 | `mimo-v2.5` | 91/100 | 10.15s | Capable but latency-risky vs the 25s tick budget |
+| 4 | `deepseek-v4-flash-vision-exp` | 82/100 | 2.99s | Think-loops → empty content on structured tasks |
+| 4 | `hy3` | 82/100 | 3.66s | Same think-loop failure mode |
+| 6 | `glm-5.3-flash` | 79/100 | 5.54s | Think-loops + transient "model busy" 429s |
+
+Operational facts baked into the client: **~9–10 req/min per-key rate limit** (sequential + 6.5s pacing + 429 backoff) and **all six are reasoning models** (`max_tokens ≥ 2000`, empty-content + `finish_reason=length` treated as failure → fallback tier).
+
+## Composer stack (frozen)
+
+api.b.ai `deepseek-v4-flash` (primary, capability 97/100, `max_tokens=2000`) → OpenRouter `minimax-m3:free` (fallback, different provider) → deterministic grounded templates (always emits). Every number the LLM prints is validated against a facts registry built from the pushed context; rejected drafts are repaired with the rejection reason fed back to the model.
 
 ## Status
 
 - ✅ All P0/P1 features implemented; 20/20 release-gate tests passing
+- ✅ All P0/P1 features implemented; 20/20 release-gate tests passing
 - ✅ Live-LLM judge runs complete (23 → 36/50 across four optimization rounds)
-- 🟨 Remaining: deploy + external monitor
+- ✅ Model bake-off complete: api.b.ai `deepseek-v4-flash` frozen as composer (97/100 capability, [`docs/9. ModelBench.md`](docs/9.%20ModelBench.md))
+- 🟨 Remaining: deploy + external monitor; full_evaluation re-run on the frozen composer
 
 Honest limitations & tradeoffs: [`sutra/README.md`](sutra/README.md) and [`docs/7. Tracker.md`](docs/7.%20Tracker.md).

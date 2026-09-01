@@ -32,6 +32,8 @@ OR_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 TR_KEY = os.environ.get("TOKENROUTER_API_KEY", "")
 OR_URL = "https://openrouter.ai/api/v1/chat/completions"
 TR_URL = "https://api.tokenrouter.com/v1/chat/completions"
+BAI_URL = "https://api.b.ai/v1/chat/completions"
+BAI_KEY = os.environ.get("BENCH_BAI_KEY", "")
 
 MODELS = [
     # (display, url, key, model, max_tokens, extra_body)
@@ -262,7 +264,21 @@ async def main():
     packs = [build_prompt_pack(ctx, t, now) for t in samples]
     print(f"Loaded {len(packs)} samples: {[p['trigger']['kind'] for p in packs]}\n")
 
-    models = MODELS if not args.only else [m for m in MODELS if m[0] in args.only.split(",")]
+    # Dynamic candidates: (a) whatever CUSTOM_LLM_* currently points at (the .env
+    # primary), (b) api.b.ai models when BENCH_BAI_KEY is exported.
+    dynamic = []
+    if settings.custom_llm_api_key and settings.custom_llm_base_url:
+        base = settings.custom_llm_base_url.rstrip("/")
+        curl = base if base.endswith("/chat/completions") else base + "/chat/completions"
+        dynamic.append((f"groq-{settings.custom_llm_model.split('/')[-1]}", curl,
+                        settings.custom_llm_api_key, settings.custom_llm_model,
+                        settings.custom_llm_max_tokens, {}))
+    if BAI_KEY:
+        dynamic += [("bai-deepseek-v4-flash", BAI_URL, BAI_KEY, "deepseek-v4-flash", 2000, {}),
+                    ("bai-qwen3.8-flash", BAI_URL, BAI_KEY, "qwen3.8-flash", 2000, {})]
+
+    all_models = dynamic + MODELS
+    models = all_models if not args.only else [m for m in all_models if m[0] in args.only.split(",")]
     tr_sem = asyncio.Semaphore(3)
 
     class RateLimiter:
@@ -279,6 +295,7 @@ async def main():
                 await asyncio.sleep(wait)
 
     or_limiter = RateLimiter(3.3)  # ~18 req/min, under the 20/min free cap
+    bai_limiter = RateLimiter(7.0)  # measured ~9-10 req/min per-key on api.b.ai
 
     async def or_post(client, url, key, model, system, user, max_tokens, extra, retries=3):
         await or_limiter.acquire()
@@ -289,6 +306,9 @@ async def main():
         t0 = time.monotonic()
         if url == OR_URL:
             text, usage = await or_post(client, url, key, model, pack["system"], pack["user"], maxtok, extra)
+        elif url == BAI_URL:
+            await bai_limiter.acquire()
+            text, usage = await chat(client, url, key, model, pack["system"], pack["user"], maxtok, extra, retries=4)
         else:
             async with tr_sem:
                 text, usage = await chat(client, url, key, model, pack["system"], pack["user"], maxtok, extra)
